@@ -3,11 +3,17 @@
 # Copyright (C) Igor Sysoev
 # Copyright (C) Nginx, Inc.
 
+# debug时加上，保留编译信息，去掉编译优化，或者 --with-cc-opt='-g -O0'
+CFLAGS="-g -O0"
+# export命令可以用于传递一个或多个变量的值到任何后继脚本,  export ,是把你设置的环境变量传给当前SHELL的子SHELL，使其在子SHELL中有效。
+export CFLAGS
 
 LC_ALL=C
 export LC_ALL
 
+# `.`表示`sh`, 执行auto文件下的options脚本，options用作处理命令行可选项，给编译时的变量赋值
 . auto/options
+
 . auto/init
 . auto/sources
 

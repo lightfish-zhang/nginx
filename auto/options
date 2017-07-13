@@ -150,12 +150,15 @@ NGX_CPU_CACHE_LINE=
 NGX_POST_CONF_MSG=
 
 opt=
-
+# `option`变量是shell的命令行参数的数组，循环它
 for option
 do
+    # 将option过滤一遍，`sed`命令常用作替换文本
     opt="$opt `echo $option | sed -e \"s/\(--[^=]*=\)\(.* .*\)/\1'\2'/\"`"
 
+    # case...in...esac 用法，`;;`等同`break`, `)`界限分开条件语句与执行语句，条件语句支持正则表达式
     case "$option" in
+        # `sed`将等于号前的文本与等于号用空文本替换，得出value值
         -*=*) value=`echo "$option" | sed -e 's/[-_a-zA-Z0-9]*=//'` ;;
            *) value="" ;;
     esac
@@ -306,6 +309,7 @@ use the \"--without-http_limit_conn_module\" option instead"
         --test-build-rtsig)              NGX_TEST_BUILD_RTSIG=YES   ;;
         --test-build-solaris-sendfilev)  NGX_TEST_BUILD_SOLARIS_SENDFILEV=YES ;;
 
+        # 最后，没有找到规定的参数选项，报错
         *)
             echo "$0: error: invalid option \"$option\""
             exit 1
@@ -319,6 +323,7 @@ NGX_CONFIGURE="$opt"
 
 if [ $help = yes ]; then
 
+# `cat`用法, `cat << END  text END` 可以将text内容输出，text可以包含换行，END没有规定，可以是随意字符串，只要text内没有 
 cat << END
 
   --help                             print this message
