@@ -1,7 +1,4 @@
 *.o
 Makefile
-objs/*.c
-objs/*.h
-objs/nginx
-objs/nginx.8
-objs/autoconf.err
+objs
+.vscode

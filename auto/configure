@@ -4,7 +4,7 @@
 # Copyright (C) Nginx, Inc.
 
 # debug时加上，保留编译信息，去掉编译优化，或者 --with-cc-opt='-g -O0'
-CFLAGS="-g -O0"
+CFLAGS="-ggdb3 -O0"
 # export命令可以用于传递一个或多个变量的值到任何后继脚本,  export ,是把你设置的环境变量传给当前SHELL的子SHELL，使其在子SHELL中有效。
 export CFLAGS
 
