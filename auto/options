@@ -19,7 +19,8 @@ CC=${CC:-gcc}
 CPP=
 NGX_OBJS=objs
 
-NGX_DEBUG=NO
+# 设置NGX_DEBUG为YES,　如果没设置，很多日志逻辑代码将在make编译时直接跳过。比如对单链接的debug_connection调试指令、分模块日志调试debug_http等
+NGX_DEBUG=YES
 NGX_CC_OPT=
 NGX_LD_OPT=
 CPU=NO
