@@ -1,6 +1,6 @@
 # 查看进程的堆栈信息
 
-## strace工具
+## strace工具，实时查看程序的系统调用的
 
 - 大多数linux发行版都有`strace`的安装包，也可以找到[strace源码地址][1]自行安装
 - 常用选项有
@@ -36,6 +36,14 @@ sudo strace -p 5753 -t -T
     10:59:23 recvfrom(3, "", 1024, 0, NULL, NULL) = 0 <0.000017>
     10:59:23 close(3)                       = 0 <0.000059>
     10:59:23 epoll_wait(8,
+```
+
+## 使用gdb查看进程的堆栈信息
+
+```
+(gdb) file /proc/$pid/exe
+(gdb) attach $pid
+(gdb) bt 
 ```
 
 ## 附录
