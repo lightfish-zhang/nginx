@@ -78,7 +78,19 @@ static ngx_cycle_t      ngx_exit_cycle;
 static ngx_log_t        ngx_exit_log;
 static ngx_open_file_t  ngx_exit_log_file;
 
-
+/**
+# 监控进程master
+- for(;;) 循环
+- ngx_signal_hander() 处理信号，接收信号并处理，比如
+    + `ngx_reap` 有子进程退出
+    + `ngx_quit` 退出nginx, master接收到后会做一些清理工作且等待worker也完全清理退出后才退出
+    + `ngx_terminate` 终止nginx, 使用`SIGKILL`信号保证nginx在一段时间后必定被结束掉
+    + `ngx_reconfigure` 重新加载配置
+- sigsuspend()
+    + 使监控进程的大部分时间都处于挂起等待状态，直到监控进程接收到信号为止
+    + 所有信号处理完后又调起sigsuspend()，如此反复
+- 
+*/
 void
 ngx_master_process_cycle(ngx_cycle_t *cycle)
 {
@@ -113,7 +125,7 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
 
     sigemptyset(&set);
 
-
+    // 给进程的command添加title
     size = sizeof(master_process);
 
     for (i = 0; i < ngx_argc; i++) {
@@ -133,8 +145,15 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
 
     ccf = (ngx_core_conf_t *) ngx_get_conf(cycle->conf_ctx, ngx_core_module);
 
+    /*
+    - fork出worker进程 
+    - stack: ngx_spawn_process() fork() ngx_worker_process_cycle()
+    */
     ngx_start_worker_processes(cycle, ccf->worker_processes,
                                NGX_PROCESS_RESPAWN);
+    /*
+    - Cache管理进程
+    */
     ngx_start_cache_manager_processes(cycle, 0);
 
     ngx_new_binary = 0;
@@ -173,6 +192,7 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
         ngx_log_debug1(NGX_LOG_DEBUG_EVENT, cycle->log, 0,
                        "wake up, sigio %i", sigio);
 
+        // 处理不同的信号
         if (ngx_reap) {
             ngx_reap = 0;
             ngx_log_debug0(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "reap children");
