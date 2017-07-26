@@ -26,6 +26,16 @@ typedef struct ngx_shm_zone_s  ngx_shm_zone_t;
 
 typedef ngx_int_t (*ngx_shm_zone_init_pt) (ngx_shm_zone_t *zone, void *data);
 
+/*
+# 共享内存的空间，结构体
+- `ngx_shm_t` 包含共享内存的名称和大小, shm.name作为共享内存的唯一标识
+- `tag`标签
+    + 一般指向当前模块的ngx_module_t
+    + 用作区分是创建一个新的共享内存还是使用已存在的
+    + 例如，A模块创建了共享内存sa, 然后，模块A再次请求使用sa, 之后模块B也请求使用sa,
+        - 结果是，A获得它之前创建的sa，因为两次请求的tag相同；而B获得内存已被他用的提示，因为B请求的tag与A第一次请求的tag不同
+
+*/
 struct ngx_shm_zone_s {
     void                     *data;
     ngx_shm_t                 shm;

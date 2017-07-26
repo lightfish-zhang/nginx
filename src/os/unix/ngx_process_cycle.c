@@ -450,7 +450,12 @@ static void
 ngx_pass_open_channel(ngx_cycle_t *cycle, ngx_channel_t *ch)
 {
     ngx_int_t  i;
-
+    
+    /*
+    # 父进程广播刚fork的子进程的channel[0]，使子进程之间可以相互通信
+    - 只要广播给之前的其他子进程就可以了
+    - 刚fork的子进程继承父进程的内存，拥有其他进程的channel[0]
+    */
     for (i = 0; i < ngx_last_process; i++) {
 
         if (i == ngx_process_slot
@@ -467,7 +472,6 @@ ngx_pass_open_channel(ngx_cycle_t *cycle, ngx_channel_t *ch)
                       ngx_processes[i].channel[0]);
 
         /* TODO: NGX_AGAIN */
-
         ngx_write_channel(ngx_processes[i].channel[0],
                           ch, sizeof(ngx_channel_t), cycle->log);
     }
@@ -637,6 +641,7 @@ ngx_reap_children(ngx_cycle_t *cycle)
                 && !ngx_terminate
                 && !ngx_quit)
             {
+                // 生成worker子进程
                 if (ngx_spawn_process(cycle, ngx_processes[i].proc,
                                       ngx_processes[i].data,
                                       ngx_processes[i].name, i)
@@ -654,6 +659,7 @@ ngx_reap_children(ngx_cycle_t *cycle)
                 ch.slot = ngx_process_slot;
                 ch.fd = ngx_processes[ngx_process_slot].channel[0];
 
+                // 发送刚fork的子进程的相关信息到之前fork的其他子进程去，共享 channel[0]，以便于进程间通信
                 ngx_pass_open_channel(cycle, &ch);
 
                 live = 1;
@@ -1022,6 +1028,8 @@ ngx_worker_process_init(ngx_cycle_t *cycle, ngx_int_t worker)
     ngx_last_process = 0;
 #endif
 
+    // ngx_channel在ngx_process.c 的 ngx_spawn_process 中被声明, ngx_channel = ngx_processes[s].channel[1]，匿名管道
+    // 把channel[1] 加入读事件监听集里，回调函数ngx_channel_handler()
     if (ngx_add_channel_event(cycle, ngx_channel, NGX_READ_EVENT,
                               ngx_channel_handler)
         == NGX_ERROR)

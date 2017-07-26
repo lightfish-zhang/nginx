@@ -113,7 +113,11 @@ ngx_spawn_process(ngx_cycle_t *cycle, ngx_spawn_proc_pt proc, void *data,
     if (respawn != NGX_PROCESS_DETACHED) {
 
         /* Solaris 9 still has no AF_LOCAL */
-
+        /*
+        # 创建匿名管道，用于进程间通信
+        - channel[0] 父进程或者其他子进程使用，channel[0]会由父进程告知其他子进程
+        - channel[1] 随后fork() 出来的子进程使用
+        */
         if (socketpair(AF_UNIX, SOCK_STREAM, 0, ngx_processes[s].channel) == -1)
         {
             ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_errno,
@@ -172,7 +176,7 @@ ngx_spawn_process(ngx_cycle_t *cycle, ngx_spawn_proc_pt proc, void *data,
             ngx_close_channel(ngx_processes[s].channel, cycle->log);
             return NGX_INVALID_PID;
         }
-
+        // 声明ngx_channel，在ngx_process_cycle.c 的 ngx_worker_process_init() 被使用, 加入读事件监听集里
         ngx_channel = ngx_processes[s].channel[1];
 
     } else {

@@ -22,7 +22,7 @@ typedef void (*ngx_spawn_proc_pt) (ngx_cycle_t *cycle, void *data);
 typedef struct {
     ngx_pid_t           pid;
     int                 status;
-    ngx_socket_t        channel[2];
+    ngx_socket_t        channel[2]; // 匿名管道，socketpair(), channel[0]给父进程或者其他子进程用，channel[1]给子进程自己用
 
     ngx_spawn_proc_pt   proc;
     void               *data;

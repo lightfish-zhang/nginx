@@ -12,7 +12,7 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 
-
+// 共享内存的名称，大小
 typedef struct {
     u_char      *addr;
     size_t       size;
