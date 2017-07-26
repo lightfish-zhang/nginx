@@ -1309,7 +1309,15 @@ ngx_http_file_cache_delete(ngx_http_file_cache_t *cache, ngx_queue_t *q,
     }
 }
 
-
+/*
+# 缓存文件管理 
+- 当配置文件设置 `proxy_cache_path`
+- Nginx在调用函数ngx_http_file_cache_set_slot()解析配置指令proxy_cache_path时设置这个回调函数
+    + 在`ngx_process_cycle.c`的`ngx_cache_manager_process_handler()`被`manger()`调用
+- 工作了什么
+    + 删除已过期的缓存文件
+    + 检查缓存文件总大小是否超限，如果超限则强制删除
+*/
 static time_t
 ngx_http_file_cache_manager(void *data)
 {

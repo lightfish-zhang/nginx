@@ -152,7 +152,8 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
     ngx_start_worker_processes(cycle, ccf->worker_processes,
                                NGX_PROCESS_RESPAWN);
     /*
-    - Cache管理进程
+    # Cache管理进程
+    - 不处理客户端请求，在代码中关闭了监听套接口，其他代码创建了事件对象并设置了对应的超时事件
     */
     ngx_start_cache_manager_processes(cycle, 0);
 
@@ -751,7 +752,7 @@ ngx_worker_process_cycle(ngx_cycle_t *cycle, void *data)
     ngx_worker_process_init(cycle, worker);
 
     ngx_setproctitle("worker process");
-
+// 线程or进程
 #if (NGX_THREADS)
     {
     ngx_int_t         n;
@@ -824,6 +825,10 @@ ngx_worker_process_cycle(ngx_cycle_t *cycle, void *data)
 
         ngx_log_debug0(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "worker cycle");
 
+        /*
+        - IO多路复用, 等待发生数据`可读`/`可写`事件
+        - 阻塞点， stack: ngx_process_events()/ngx_epoll_process_events() -> epoll_wait()
+        */
         ngx_process_events_and_timers(cycle);
 
         if (ngx_terminate) {
@@ -1307,10 +1312,27 @@ ngx_worker_thread_cycle(void *data)
 
 #endif
 
-
+/*
+# Cache 管理进程
+- 作用，比如`Proxy Cache`功能，可以在nginx.conf配置文件中某一`块`设置开启
+```
+    proxy_cache_path /data/nginx/cache/one levels=1:2 keys_zone=one:10m
+```
+- cycle 工作了什么
+    + 关闭监听套接口，Cache管理进程不需要接收客户端请求
+    + 创建一个事件对象，设置对应的超时事件
+*/
 static void
 ngx_cache_manager_process_cycle(ngx_cycle_t *cycle, void *data)
 {
+    /*
+    - 传参data为`ngx_cache_manager_ctx_t`，可见文件头声明
+```
+    static ngx_cache_manager_ctx_t  ngx_cache_manager_ctx = {
+        ngx_cache_manager_process_handler, "cache manager process", 0
+    };  
+```
+    */
     ngx_cache_manager_ctx_t *ctx = data;
 
     void         *ident[4];
@@ -1333,12 +1355,15 @@ ngx_cache_manager_process_cycle(ngx_cycle_t *cycle, void *data)
     ev.handler = ctx->handler;
     ev.data = ident;
     ev.log = cycle->log;
+
+    // 事件对象的data字段一般挂载的是connect对象，此处设为-1, 即是将connect对象的fd字段设为-1, 避免其他代码走到异常逻辑
     ident[3] = (void *) -1;
 
     ngx_use_accept_mutex = 0;
 
     ngx_setproctitle(ctx->name);
 
+    // 此处的ctx->delay为0, 于是立即超时，执行对应的函数`ngx_cache_manager_process_handler()`
     ngx_add_timer(&ev, ctx->delay);
 
     for ( ;; ) {
@@ -1358,7 +1383,10 @@ ngx_cache_manager_process_cycle(ngx_cycle_t *cycle, void *data)
     }
 }
 
-
+/*
+- 调用每一次磁盘缓存管理对象的`manager()`函数
+- 重新设置事件对象的下一次超时时刻
+*/
 static void
 ngx_cache_manager_process_handler(ngx_event_t *ev)
 {
@@ -1372,6 +1400,11 @@ ngx_cache_manager_process_handler(ngx_event_t *ev)
     for (i = 0; i < ngx_cycle->paths.nelts; i++) {
 
         if (path[i]->manager) {
+            /*
+            # manage() 函数
+            - 对应的函数为`ngx_http_file_cache_manager()`，声明于`ngx_http_file_cache.c`文件
+            - 这是Nginx在调用函数`ngx_http_file_cache_set_slot()`解析配置指令`proxy_cache_path`时设置的回调值
+            */
             n = path[i]->manager(path[i]->data);
 
             next = (n <= next) ? n : next;
