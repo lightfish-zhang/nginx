@@ -605,7 +605,11 @@ ngx_http_limit_req_expire(ngx_http_limit_req_ctx_t *ctx, ngx_uint_t n)
     }
 }
 
-
+/*
+# 初始化Nginx模块`ngx_http_limit_req_module`
+- 第二个参数`data`表示“旧”数据，在重新加载配置时，该值不为空
+- 如果旧数据可继续使用，可直接返回｀NGX_OK｀，否则需要根据自身逻辑对共享内存的使用做初始化
+*/
 static ngx_int_t
 ngx_http_limit_req_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 {

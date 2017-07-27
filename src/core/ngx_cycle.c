@@ -466,6 +466,10 @@ ngx_init_cycle(ngx_cycle_t *old_cycle)
             break;
         }
 
+        /*
+        # 初始化共享内存
+        - ngx_shm_alloc　是实际分配内存的函数
+        */
         if (ngx_shm_alloc(&shm_zone[i].shm) != NGX_OK) {
             goto failed;
         }
@@ -1240,7 +1244,14 @@ ngx_reopen_files(ngx_cycle_t *cycle, ngx_uid_t user)
 #endif
 }
 
-
+/*
+# 创建共享内存
+- 该`ngx_shared_memory_add()`只是定义代表共享内存的结构体，实际分配内存的函数是`ngx_shm_alloc()`
+- Nginx所有共享内存都以list链表的形式组织在全局变量cf->cycle->shared_memory下
+- 创建新的共享内存之前，对该链表进行遍历查找以及冲突检测
+- 对于已存在且不存在冲突的共享内存可直接返回引用
+- 以`ngx_http_limit_req_module`模块为例，它需要的共享内存在配置文件里以`limit_req_zone`配置项出现
+*/
 ngx_shm_zone_t *
 ngx_shared_memory_add(ngx_conf_t *cf, ngx_str_t *name, size_t size, void *tag)
 {
@@ -1266,12 +1277,14 @@ ngx_shared_memory_add(ngx_conf_t *cf, ngx_str_t *name, size_t size, void *tag)
             continue;
         }
 
+        // 查找shm.name是否已存在
         if (ngx_strncmp(name->data, shm_zone[i].shm.name.data, name->len)
             != 0)
         {
             continue;
         }
 
+        // 检测冲突, tag一般使用当前模块的ngx_module_t变量
         if (tag != shm_zone[i].tag) {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                             "the shared memory zone \"%V\" is "
@@ -1288,9 +1301,11 @@ ngx_shared_memory_add(ngx_conf_t *cf, ngx_str_t *name, size_t size, void *tag)
             return NULL;
         }
 
+        // 对于已存在且不存在冲突的共享内存可直接返回引用
         return &shm_zone[i];
     }
 
+    // 创建新的共享内存
     shm_zone = ngx_list_push(&cf->cycle->shared_memory);
 
     if (shm_zone == NULL) {
