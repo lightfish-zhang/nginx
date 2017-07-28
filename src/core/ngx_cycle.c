@@ -919,7 +919,16 @@ ngx_cmp_sockaddr(struct sockaddr *sa1, struct sockaddr *sa2)
     return NGX_OK;
 }
 
-
+/*
+# slab机制
+- 简单来说，基于两点，缓存与对齐
+    + 缓存意味着预分配，提前向操作系统申请内存，自己管理内存的申请与释放
+    + 对齐，意味着内存的申请总是按２的幂次方进行，比如8,16,32,64...
+        - 确实存在内存的浪费，但是内存对齐对性能的影响是显著的
+        - 更重要是把内部碎片也掌握在可控的范围内
+- Nginx的slab机制与共享内存一起使用，即将使用的共享内存以list链表的形式组织在全局变量cf->cycle->shared_memory
+- slab机制对这些内存进行统一的内部划分与管理
+*/
 static ngx_int_t
 ngx_init_zone_pool(ngx_cycle_t *cycle, ngx_shm_zone_t *zn)
 {
@@ -963,6 +972,7 @@ ngx_init_zone_pool(ngx_cycle_t *cycle, ngx_shm_zone_t *zn)
         return NGX_ERROR;
     }
 
+    // slab对象的初始化函数
     ngx_slab_init(sp);
 
     return NGX_OK;

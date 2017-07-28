@@ -68,7 +68,17 @@ static ngx_uint_t  ngx_slab_max_size;
 static ngx_uint_t  ngx_slab_exact_size;
 static ngx_uint_t  ngx_slab_exact_shift;
 
-
+/*
+# 初始化slab对象
+- `ngx_pagesize` 系统内存页大小，Linux下一般是4KB
+- `ngx_pagesize_shift` = 1 << 12 = 4096 (ngx_pagesize) 
+- `ngx_slab_max_size` = 2048 slots分配和pages分配的分割点，大于等于该值则需从pages里分割
+- `ngx_slab_exact_size` = ngx_pagesize / 32 = 4KB/32 = 128, 每一个划分块的大小
+    + 要恰好完整地表示一个4KB内存页的每一个划分块的状态，可以把4KB划分为32块，使用`uintptr_t`类型的位图变量表示页划分，对应32个划分块的状态(使用/空闲)
+- `ngx_slab_exact_shift` = 1 << 7 = 128
+- `pool->min_shift` = 3
+- `pool->min_size` = 1 << pool->min_shift , 最小划分块大小
+*/
 void
 ngx_slab_init(ngx_slab_pool_t *pool)
 {
