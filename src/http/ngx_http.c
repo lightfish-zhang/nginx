@@ -1443,7 +1443,9 @@ ngx_http_optimize_servers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf,
     return NGX_OK;
 }
 
-
+/*
+# Nginx对虚拟主机的管理使用了Hash数据结构
+*/
 static ngx_int_t
 ngx_http_server_names(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf,
     ngx_http_conf_addr_t *addr)

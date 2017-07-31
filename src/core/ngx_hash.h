@@ -12,7 +12,17 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 
-
+/*
+# 一个实际元素的存储
+- name[1] C语言的非标准用法
+    + 在结构体中定义一个零长度数组，实现可扩展数组
+    + 在GNU下可用零长度数组，在其他平台零长度数组会报错，建议使用长度１
+    + 只能在堆中分配内存空间，如
+    ```
+        // length = strlen(name)
+        ngx_hash_elt_t *p = (ngx_hash_elt_t*)malloc(sizeof(ngx_hash_elt_t)+length);
+    ```
+*/
 typedef struct {
     void             *value;
     u_short           len;
