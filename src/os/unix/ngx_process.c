@@ -15,7 +15,7 @@ typedef struct {
     int     signo;
     char   *signame;
     char   *name;
-    void  (*handler)(int signo);
+    void  (*handler)(int signo); //  函数指针的定义, eg, int (*func)(int,int)
 } ngx_signal_t;
 
 
@@ -35,7 +35,20 @@ ngx_socket_t     ngx_channel;
 ngx_int_t        ngx_last_process;
 ngx_process_t    ngx_processes[NGX_MAX_PROCESSES];
 
+/*
+- Nginx定义了一个ngx_signal_t结构体的数组，将它要处理的信号全部罗列其中
+- ngx_signal_value() 是宏，展开如下
+    + a##b 表示拼接, ab
+    + #@a 表示加单引号, 'a'
+    + #a 表示加双引号, "a"
+```
+//ngx_config.h
+#define ngx_signal_helper(n)     SIG##n
+#define ngx_signal_value(n)      ngx_signal_helper(n)
 
+#define NGX_RECONFIGURE_SIGNAL   HUP
+```
+*/
 ngx_signal_t  signals[] = {
     { ngx_signal_value(NGX_RECONFIGURE_SIGNAL),
       "SIG" ngx_value(NGX_RECONFIGURE_SIGNAL),
@@ -283,7 +296,10 @@ ngx_execute_proc(ngx_cycle_t *cycle, void *data)
     exit(1);
 }
 
-
+/*
+- signals 在文件头已声明ngx_signal_t结构体的数组，由该函数遍历和初始化
+- sigaction() 注册进程收到信号时的相应处理, POSIX 标准定义的信号处理接口是sigaction()函数, 而signal()在各系统上不一样
+*/
 ngx_int_t
 ngx_init_signals(ngx_log_t *log)
 {
@@ -304,7 +320,11 @@ ngx_init_signals(ngx_log_t *log)
     return NGX_OK;
 }
 
-
+/*
+# 处理信号
+- ngx_signal_handler()对信号的处理非常简单，根据收到的信号对相应的全局变量进行置位操作，这符合信号处理函数要求简单快速的一般特点
+- 该函数处理完后，在`ngx_process_cycle.c`的`ngx_master_process_cycle()`，函数`sigsuspend()`返回，从而主进程可以执行后面的代码，判断全局变量是否置位而做相应的处理
+*/
 void
 ngx_signal_handler(int signo)
 {

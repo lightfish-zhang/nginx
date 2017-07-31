@@ -3,7 +3,11 @@
  * Copyright (C) Igor Sysoev
  * Copyright (C) Nginx, Inc.
  */
-
+/*
+# palloc 分配内存块
+- 调试tips
+    + Nginx的内存池会对内存诊断工具(eg, Valgrind）产生负面干扰，尝试使用第三方补丁，禁用内存池，直接使用malloc/free接口
+*/
 
 #include <ngx_config.h>
 #include <ngx_core.h>
@@ -12,7 +16,10 @@
 static void *ngx_palloc_block(ngx_pool_t *pool, size_t size);
 static void *ngx_palloc_large(ngx_pool_t *pool, size_t size);
 
-
+/*
+# 创建内存池
+- 返回内存池节点的结构体
+*/
 ngx_pool_t *
 ngx_create_pool(size_t size, ngx_log_t *log)
 {
@@ -29,7 +36,7 @@ ngx_create_pool(size_t size, ngx_log_t *log)
     p->d.failed = 0;
 
     size = size - sizeof(ngx_pool_t);
-    p->max = (size < NGX_MAX_ALLOC_FROM_POOL) ? size : NGX_MAX_ALLOC_FROM_POOL;
+    p->max = (size < NGX_MAX_ALLOC_FROM_POOL) ? size : NGX_MAX_ALLOC_FROM_POOL; // max <= 4096 - 1 = 4095 (0 ~ 4095), 4KB
 
     p->current = p;
     p->chain = NULL;
@@ -40,7 +47,15 @@ ngx_create_pool(size_t size, ngx_log_t *log)
     return p;
 }
 
-
+/*
+# 内存池的释放
+- Nginx没有提供小块内存的释放，只提供整一页内存池的释放
+- web server应用的特殊性，即阶段与时效
+    + 对于其处理的业务逻辑分有明确的阶段，而对每一阶段又有明确的时效
+    + Nginx可针对阶段来分配内存池，针对时效来销毁内存池
+    + 比如，当一个阶段开始(如request)，创建对应所需的内存池，当这个阶段结束后就销毁其对应的内存池，由于这个阶段有严格的时效性，即一段时间后，必定会因正常处理，或异常错误或超时等结束, 所以不会出现Nginx长时间占据大量无用内存池的情况。
+    + 基于上一点，在阶段中回收小块内存是无必要的
+*/
 void
 ngx_destroy_pool(ngx_pool_t *pool)
 {
@@ -112,7 +127,15 @@ ngx_reset_pool(ngx_pool_t *pool)
     }
 }
 
-
+/*
+# 尝试从pool内存池分配size大小的内存空间，有两种情况
+- pool->max, 是用作区分小块内存与大块内存的临界
+    + 原因是，只有当分配的内存空间小于一页时才有缓存的必要(向Nginx内存池申请), 否则直接从系统接口malloc()申请
+- size <= pool->max, 从内存池分配
+- size > pool->max, 
+    ＋　调用函数ngx_palloc_block() 申请一个新的等同大小的内存节点，然后从这个新内存池节点分配出size大小的内存空间
+    ＋　把新内存池节点连接上上一个内存池节点的p->d.next字段下形成单链表
+*/
 void *
 ngx_palloc(ngx_pool_t *pool, size_t size)
 {
@@ -296,7 +319,10 @@ ngx_pfree(ngx_pool_t *pool, void *p)
     return NGX_DECLINED;
 }
 
-
+/*
+- 基于ngx_palloc()封装
+- 返回分配的内存之前对这些内存做清零操作
+*/
 void *
 ngx_pcalloc(ngx_pool_t *pool, size_t size)
 {
