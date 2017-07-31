@@ -4,6 +4,12 @@
  * Copyright (C) Nginx, Inc.
  */
 
+/*
+# Radix tree 基树
+- 一种基于二进制表示键值的二叉查找树，特定情况下使用，如文件系统，路由表等
+- Nginx提供这个基树仅被geo模块使用，这个模块使用基树来处理IP地址的匹配查找
+- geo模块仅支持IPv4，这意味这棵基树支持的最大深度为32就足够了
+*/
 
 #include <ngx_config.h>
 #include <ngx_core.h>
