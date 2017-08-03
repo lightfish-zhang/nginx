@@ -74,7 +74,33 @@
 
 #define NGX_MAX_CONF_ERRSTR  1024
 
-
+/*
+# Nginx的配置项的结构体
+- `name` 配置项目的名称
+- `set` 配置指令处理回调函数
+- `offset` 指定转换后控制值的存放位置，一般指定为某一结构体变量的字段偏移量(利用offsetof宏), 对于复杂配置项，它不保存配置项值，设为0
+- `type` 指定配置项的多种相关信息
+    + `NGX_CONF_FLAG` 表示该配置项目有一个布尔类型的值，例如daomon就是一个布尔类型的配置项目，其值有on与off
+    + `NGX_CONF_BLOCK` 表示该配置项目为复制配置项，因此有一个由大括号组织起来的多值块，比如配置项, http, event等
+    + `NGX_CONF_NOARGS` `NGX_CONF_TAKE1`~`NGX_CONF_TAKE7` 分别表示配置项有0~7个token
+    + `NGX_CONF_1MORE` 表示一个以上的token, `NGX_CONF_TAKE12` 表示1个或2个token
+    + `NGX_MAIN_CONF` 表示项目所在上下文，配置文件最外层
+    + `NGX_EVENT_CONF` 表示项目所在上下文，event配置块
+    + `NGX_HTTP_MAIN_CONF` 表示项目所在上下文，http配置块
+    + `NGX_HTTP_SRV_CONF` 表示项目所在上下文，http的server指令配置块
+    + `NGX_HTTP_LOC_CONF` 表示项目所在上下文，http的location指令配置块
+    + `NGX_HTTP_LIF_CONF` 表示项目所在上下文，http的server内的if指令配置块
+    + `NGX_HTTP_LMT_CONF` 表示项目所在上下文，http的limit_except指令配置块
+    + `NGX_HTTP_UPS_CONF` 表示项目所在上下文，http的upstream指令配置块
+    + `NGX_MAIL_MAIN_CONF` 表示项目所在上下文，mail的配置块
+    + `NGX_MAIL_SRV_CONF` 表示项目所在上下文，mail的server指令配置块
+- `conf` 主要由NGX_HTTP_MODULE类型模块所使用，其指定当前配置项所在的大致位置，其他模块基本不用该字段，设为0
+    + `NGX_HTTP_MAIN_CONF_OFFSET`
+    + `NGX_HTTP_SRV_CONF_OFFSET`
+    + `NGX_HTTP_LOC_CONF_OFFSET`
+- `post` 大多数情况下为NULL，某些特殊配置项会设置为函数回调指针, 配置项如auth_basic, connection_pool_size, request_pool_size等
+- 每个模块都把自己所需要的配置项目的对应ngx_command_s结构体变量组成一个数组，并以ngx_xxx_xxx_commands命名，该数组以元素ngx_null_command作为结束哨兵
+*/
 struct ngx_command_s {
     ngx_str_t             name;
     ngx_uint_t            type;

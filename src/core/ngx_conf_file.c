@@ -97,7 +97,20 @@ ngx_conf_param(ngx_conf_t *cf)
     return rv;
 }
 
-
+/*
+# 执行配置解析的关键函数
+- 一开始在`ngx_cycle.c`中`ngx_init_cycle()`函数中第一次被调用，传入配置文件地址的字符串指针
+- 它是一个间接递归函数，遇到特殊配置指令(include,events,http,server,location 等)，会调用ngx_conf_parse()
+## 解析过程如下
+- 判断当前解析状态
+- 读取配置标记token
+- 当读取了合适数量的标记token后对其进行实际的处理，将配置项转换为Nginx内对应控制变量的值
+### 判断当前解析状态
+- 获得文件描述符，读取文件内容
+- 遇到include指令，调用ngx_conf_parse()，状态标记为type = parse_file;
+- 遇到复杂配置项值，如events,http等，递归调用ngx_conf_parse(), 状态标记为 type = parse_block;
+- 解析命令行参数配置项值，也就是用户通过`-g`参数输入的配置信息，如`nginx -g 'daemon on;'` ，同样递归， 状态标记为 type = parse_param;
+*/
 char *
 ngx_conf_parse(ngx_conf_t *cf, ngx_str_t *filename)
 {
@@ -140,6 +153,7 @@ ngx_conf_parse(ngx_conf_t *cf, ngx_str_t *filename)
 
         cf->conf_file->buffer = &buf;
 
+        // 申请缓冲区，NGX_CONF_BUFFER = 4096, 保存在 cf->conf_file->buffer, 然后ngx_conf_read_token()反复使用该缓存区
         buf.start = ngx_alloc(NGX_CONF_BUFFER, cf->log);
         if (buf.start == NULL) {
             goto failed;
