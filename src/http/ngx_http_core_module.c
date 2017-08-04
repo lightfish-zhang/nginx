@@ -2811,7 +2811,11 @@ ngx_http_get_forwarded_addr(ngx_http_request_t *r, ngx_addr_t *addr,
     return NGX_DECLINED;
 }
 
-
+/*
+# 配置项`server`的回调处理函数
+- 申请内存空间，存储其包含的简单配置项的控制值
+- 会再次调用`ngx_conf_parse()`
+*/
 static char *
 ngx_http_core_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
 {

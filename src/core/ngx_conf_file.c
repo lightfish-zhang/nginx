@@ -289,7 +289,10 @@ done:
     return NGX_CONF_OK;
 }
 
-
+/*
+# 处理配置
+- 两个for循环，Nginx的所有模块的数组，每个模块所有相关的指令的数组`ngx_command_t[]`
+*/
 static ngx_int_t
 ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
 {
@@ -303,6 +306,7 @@ ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
 
     found = 0;
 
+    // 两个for循环的边界判断之所以这样写，是因为最后一个元素是结束哨兵
     for (i = 0; ngx_modules[i]; i++) {
 
         cmd = ngx_modules[i]->commands;
@@ -436,7 +440,12 @@ invalid:
     return NGX_ERROR;
 }
 
-
+/*
+# 对配置文件进行逐个字符扫描并解析出单个的token
+- 在缓冲区(`NGX_CONF_BUFFER`)4096大小，扫描
+- 一条简单配置项的所有标记会被读取, 并存放在`cf->args`数组内，然后，执行回调函数进行实际的解析处理
+- 对于配置块`{}`内的标记，将在`ngx_conf_parse()`递归调用继续处理
+*/
 static ngx_int_t
 ngx_conf_read_token(ngx_conf_t *cf)
 {

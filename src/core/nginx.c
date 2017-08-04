@@ -1338,7 +1338,10 @@ ngx_get_cpu_affinity(ngx_uint_t n)
     return ccf->cpu_affinity[ccf->cpu_affinity_n - 1];
 }
 
-
+/*
+# `worker_processes`配置项对应的回调处理函数
+- 
+*/
 static char *
 ngx_set_worker_processes(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
@@ -1357,7 +1360,7 @@ ngx_set_worker_processes(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         ccf->worker_processes = ngx_ncpu;
         return NGX_CONF_OK;
     }
-
+    // 使用 atoi() 函数把字符串的数字转换为整型的数字，存储到对应的位置，这就完成了配置文件的`worker_processes 1;`
     ccf->worker_processes = ngx_atoi(value[1].data, value[1].len);
 
     if (ccf->worker_processes == NGX_ERROR) {
