@@ -211,7 +211,7 @@ ngx_init_cycle(ngx_cycle_t *old_cycle)
 
     ngx_strlow(cycle->hostname.data, (u_char *) hostname, cycle->hostname.len);
 
-
+    // 遍历Nginx模块，只处理核心模块，因为核心模块才是基础模块，以便作为其他非核心模块的支撑
     for (i = 0; ngx_modules[i]; i++) {
         if (ngx_modules[i]->type != NGX_CORE_MODULE) {
             continue;
@@ -219,6 +219,7 @@ ngx_init_cycle(ngx_cycle_t *old_cycle)
 
         module = ngx_modules[i]->ctx;
 
+        // 并不是所有的核心模块都有create_conf()函数，不需要配置，也就不需要申请存储空间
         if (module->create_conf) {
             rv = module->create_conf(cycle);
             if (rv == NULL) {
