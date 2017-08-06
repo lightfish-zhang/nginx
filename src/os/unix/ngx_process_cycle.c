@@ -194,6 +194,8 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
                        "wake up, sigio %i", sigio);
 
         // 处理不同的信号
+
+        // 有子进程退出
         if (ngx_reap) {
             ngx_reap = 0;
             ngx_log_debug0(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "reap children");
@@ -201,6 +203,7 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
             live = ngx_reap_children(cycle);
         }
 
+        // Nginx进程终止
         if (!live && (ngx_terminate || ngx_quit)) {
             ngx_master_process_exit(cycle);
         }

@@ -199,7 +199,7 @@ ngx_spawn_process(ngx_cycle_t *cycle, ngx_spawn_proc_pt proc, void *data,
 
     ngx_process_slot = s;
 
-
+    // fork子进程
     pid = fork();
 
     switch (pid) {
