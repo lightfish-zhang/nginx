@@ -9,7 +9,10 @@
 #include <ngx_core.h>
 #include <ngx_channel.h>
 
-
+/*
+# 多进程之间传送文件描述符
+- 需了解的知识点: sendmsg(), resvmsg(), 结构体`msghdr`与`cmsghdr`
+*/
 ngx_int_t
 ngx_write_channel(ngx_socket_t s, ngx_channel_t *ch, size_t size,
     ngx_log_t *log)
@@ -36,7 +39,7 @@ ngx_write_channel(ngx_socket_t s, ngx_channel_t *ch, size_t size,
 
         cmsg.cm.cmsg_len = CMSG_LEN(sizeof(int));
         cmsg.cm.cmsg_level = SOL_SOCKET;
-        cmsg.cm.cmsg_type = SCM_RIGHTS;
+        cmsg.cm.cmsg_type = SCM_RIGHTS; //SCM_RIGHTS ，表示附属数据对象是文件描述符
 
         /*
          * We have to use ngx_memcpy() instead of simple
@@ -123,7 +126,7 @@ ngx_read_channel(ngx_socket_t s, ngx_channel_t *ch, size_t size, ngx_log_t *log)
     msg.msg_accrightslen = sizeof(int);
 #endif
 
-    n = recvmsg(s, &msg, 0);
+    n = recvmsg(s, &msg, 0); // 与sendmsg()对应的是recvmsg()
 
     if (n == -1) {
         err = ngx_errno;

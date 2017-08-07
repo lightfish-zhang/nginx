@@ -130,6 +130,7 @@ ngx_spawn_process(ngx_cycle_t *cycle, ngx_spawn_proc_pt proc, void *data,
         # 创建匿名管道，用于进程间通信
         - channel[0] 父进程或者其他子进程使用，channel[0]会由父进程告知其他子进程
         - channel[1] 随后fork() 出来的子进程使用
+        - 使用AF_UNIX，使用unix domain, unix域协议才能在本机进程间传递文件描述符
         */
         if (socketpair(AF_UNIX, SOCK_STREAM, 0, ngx_processes[s].channel) == -1)
         {
