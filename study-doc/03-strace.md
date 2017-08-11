@@ -46,6 +46,9 @@ sudo strace -p 5753 -t -T
 (gdb) bt 
 ```
 
+- `attach` 命令，会使该进程阻塞, 注意的是，比如服务端进程在`epoll_wait()`时候被`attach`,当有客户端发送请求过来，记得执行gdb命令`continue`让服务端进程执行下一步处理
+- 注意编译添加`-ggdb3 -O0`，以便调试
+
 ## 附录
 
 [strace源码地址][1]

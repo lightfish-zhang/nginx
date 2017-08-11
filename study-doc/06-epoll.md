@@ -1,0 +1,106 @@
+# Nginx的epoll模型
+
+## 前言
+
+epoll模型是Nginx的高性能的基石
+
+## IO多路复用模型
+
+### IO多路复用模型的接口
+
+- 不同平台支持不同的io多路复用模型，如linux的epoll,FreeBSD的kqueue, 对于跨平台开发的Nginx，就需要抽象出统一的接口
+- `ngx_event_action_t`接口
+    + `init` 初始化
+    + `add` 将某描述符的某个事件(可读/可写)添加到多路复用监控里
+    + `del` 将某描述符的某个事件(可读/可写)从多路复用监控里删除
+    + `enable` 启用对某个指定事件的监控
+    + `disable` 禁用对某个指定事件的监控
+    + `add_conn` 将指定连接关联的描述符加入到多路复用监控里
+    + `del_conn` 将指定连接关联的描述符从多路复用监控里删除
+    + `process_changes` 监控的事件发送变化，只有kqueue用到这个接口
+    + `process_event` 阻塞等待事件发送，对发送的事件进行逐个处理
+    + `done` 回收资源
+
+- 详细实现代码在`ngx_event.c`, 
+
+### epoll模型
+
+```c
+#include <sys/epoll.h>
+int epoll_create(int size);
+int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event);
+int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);
+int epoll_pwait(int epfd, struct epoll_event *events, int maxevents, int timeout, const sigset_t *sigmask);
+```
+
+```c
+// /usr/include/sys/epoll.h
+typedef union epoll_data
+{
+  void *ptr;
+  int fd;
+  uint32_t u32;
+  uint64_t u64;
+} epoll_data_t;
+
+struct epoll_event
+{
+  uint32_t events;	  /* Epoll events */
+  epoll_data_t data;	/* User data variable */
+} __EPOLL_PACKED;
+```
+
+- `epoll`同时监控的描述符个数的最大值是`cat /proc/sys/fs/file-max`,也就是进程可打开文件描述符个数限制，笔者机子`Linux 4.9.40-1`, 该数目是1198690
+- `epoll_create()` 创建一个epoll的句柄，参数size，告诉内核监听的描述符数目的最大值，请求内核为存储事件分配空间，所以在epoll用完后，需要close(epfd)，回收分配空间
+- `epoll_ctl()` 向内核注册、删除或修改事件，按惯例，执行成功返回0，错误返回-1同时设置errno
+  + 第一个参数epfd是函数`epoll_create()`的返回值
+  + 第二个参数op，动作：注册新的fd`EPOLL_CTL_ADD`，修改已注册的fd的监听事件`EPOLL_CTL_MOD`，删除...`EPOLL_CTL_DEL`
+  + 第三个参数fd, 需要监听的描述符
+  + 第四个参数event，是`epoll_event`结构体，告诉内核需要监听什么事件
+
+- `epoll_event` 结构体，字段`events`有：
+  + `EPOLLIN` 普通数据可读
+  + `EPOLLOUT` 发生挂起
+  + `EPOLLPRI` 高优先级数据可读
+  + `EPOLLERR` 发生错误
+  + `EPOLLHUP` 发生挂起
+  + `EPOLLET` 将epoll设为边缘触发模式`Edge Triggered`，epoll默认是水平触发`Level Triggered`
+
+- `epoll_wait()` 等待事件发生，执行成功则返回发生事件的描述符的数目，错误返回-1同时设置errno
+  + 第一个参数epfd是函数`epoll_create()`的返回值
+  + 第二个参数events，从内核接受发送事件的集合
+  + 第三个参数maxevents，指定一次获取的最大值，理所当然，其值不得大于`epoll_create(size)`的size
+  + 第四个参数timeout指定epoll_wait()函数调用等待时间多久(单位毫秒)，取值-1则无限等待到事件或信号发送, 取值0则立即返回，大于0则阻塞等待(process stat为sleep)，睡眠时间固定为指定的时间
+
+- 水平触发与边缘触发，这个与电路的高低电平的触发方式类似，笔者听硬件开发的同学说，水平触发是一种状态，边缘触发是带有时序的（这样理解好像莫名其妙哈）
+  + epoll的水平触发，举例，可读事件返回的就绪的fd，也就是fd有数据，如果没有去读取数据(accept/recv/read), 那么下一次epoll_wait()会再一次返回这个fd
+  + epoll的边缘触发，与水平触发比较，没有向fd读取数据，下一次epoll_wait()不会再次返回该fd，除非fd被再一次写入"新的数据"
+  + 从两者区别可知，边缘触发仅支持非阻塞non-block的fd, 这样才能保证，就算服务端不读取数据，客户端可以继续往该fd写入数据
+  + 对大并发的系统，从性能上，边缘触发比水平触发更有优势，但是对编程的要求也更高
+
+#### 参考例子 
+
+- socket + epoll的代码范例,  https://github.com/lightfish-zhang/linux_practise_c/blob/master/socket/epoll-example.c
+
+## Nginx的事件处理
+
+Nginx里，关注的事件是依附在socket描述符上，在一个流程处理中，在不同阶段，对事件的关注也有所不同
+
+- 新建连接socket，一开始必定监听可读事件
+- 读取完所有请求信息并正常处理后，将关注socket的可写事件，从而知道响应信息顺利发送给客户端
+- 善加利用epoll_wait()的timeout参数，可以判断超时事件，如响应超时
+- 根据当前处理阶段不同，事件处理回调函数也可能不同，比如，新建socket连接，处理客户端请求头与处理客户端请求体的回调函数不一样
+
+### 事件以及回调处理函数
+
+以下是Nginx对http请求响应的正常处理的流程
+
+- 第1步，监听`读`, 回调函数`ngx_http_init_request()`
+- 第2步，监听`写`, 回调函数`ngx_http_empty_handler()`
+- 第3步，监听`读`, 回调函数`ngx_http_process_request_line()`
+- 第4步，监听`读`, 回调函数`ngx_http_process_request_headers()`
+- 第5步，监听`读`, 回调函数`ngx_http_request_handler()`
+- 第6步，监听`写`, 回调函数`ngx_http_init_request()`
+- 第7步，监听`写`, 回调函数`ngx_http_empty_handler()`
+- 第8步，监听`读`, 回调函数`ngx_http_keepalive_handler()`
+
