@@ -96,11 +96,22 @@ Nginx里，关注的事件是依附在socket描述符上，在一个流程处理
 以下是Nginx对http请求响应的正常处理的流程
 
 - 第1步，监听`读`, 回调函数`ngx_http_init_request()`
-- 第2步，监听`写`, 回调函数`ngx_http_empty_handler()`
+- 第2步，监听`写`, 回调函数`ngx_http_empty_handler()`(该函数啥都不干，仅打个日志)
 - 第3步，监听`读`, 回调函数`ngx_http_process_request_line()`
 - 第4步，监听`读`, 回调函数`ngx_http_process_request_headers()`
 - 第5步，监听`读`, 回调函数`ngx_http_request_handler()`
-- 第6步，监听`写`, 回调函数`ngx_http_init_request()`
+- 第6步，监听`写`, 回调函数`ngx_http_request_handler()`
 - 第7步，监听`写`, 回调函数`ngx_http_empty_handler()`
 - 第8步，监听`读`, 回调函数`ngx_http_keepalive_handler()`
 
+逻辑过程
+
+- 第1步，accept()新建socket，监听可读事件，获取客户端的请求信息
+- 第2步，读完客户端信息之后就是进行初始化等准备工作，此时不关注写事件，所以用`ngx_http_empty_handler()`，即啥都不做，仅打印日志
+- 第3，4步，对请求头、请求体处理
+- 第5步，监听可读事件，回调是`ngx_http_request_handler()`，获取响应数据（资源）
+- 第6步，监听可写事件，回调是`ngx_http_request_handler()`，也就是把响应数据全部发回到客户端connfd
+- 第7步，监听可写事件，从而知道响应信息顺利发送给客户端
+- 第8步，与客户端保持`keepalive`状态
+  + 如果客户端有新的数据发到，在`ngx_http_keepalive_handler()`将读到对应的数据，并且调用`ngx_http_init_request`初始化，开始新的请求处理
+  + 如果客户端关闭了连接，那么Nginx同样获得一个可读事件，调用`ngx_http_keepalive_handler()`却读不到数据，于是关闭连接、回收资源
