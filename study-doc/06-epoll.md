@@ -115,3 +115,5 @@ Nginx里，关注的事件是依附在socket描述符上，在一个流程处理
 - 第8步，与客户端保持`keepalive`状态
   + 如果客户端有新的数据发到，在`ngx_http_keepalive_handler()`将读到对应的数据，并且调用`ngx_http_init_request`初始化，开始新的请求处理
   + 如果客户端关闭了连接，那么Nginx同样获得一个可读事件，调用`ngx_http_keepalive_handler()`却读不到数据，于是关闭连接、回收资源
+
+更多关于Nginx对http请求的处理过程，记于另外的文章
