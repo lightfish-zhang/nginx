@@ -82,6 +82,74 @@ struct epoll_event
 
 - socket + epoll的代码范例,  https://github.com/lightfish-zhang/linux_practise_c/blob/master/socket/epoll-example.c
 
+## Nginx对epoll模块的封装
+
+- 暴露的事件的相关方法 `ngx_event.h`, 在Nginx其他代码中，都是调用以下宏定义的方法
+
+```c
+#define ngx_add_event        ngx_event_actions.add
+#define ngx_del_event        ngx_event_actions.del
+#define ngx_add_conn         ngx_event_actions.add_conn
+#define ngx_del_conn         ngx_event_actions.del_conn
+```
+
+```c
+typedef struct {
+    ngx_int_t  (*add)(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags);
+    ngx_int_t  (*del)(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags);
+
+    ngx_int_t  (*enable)(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags);
+    ngx_int_t  (*disable)(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags);
+
+    ngx_int_t  (*add_conn)(ngx_connection_t *c);
+    ngx_int_t  (*del_conn)(ngx_connection_t *c, ngx_uint_t flags);
+
+    ngx_int_t  (*process_changes)(ngx_cycle_t *cycle, ngx_uint_t nowait);
+    ngx_int_t  (*process_events)(ngx_cycle_t *cycle, ngx_msec_t timer,
+                   ngx_uint_t flags);
+
+    ngx_int_t  (*init)(ngx_cycle_t *cycle, ngx_msec_t timer);
+    void       (*done)(ngx_cycle_t *cycle);
+} ngx_event_actions_t;
+
+
+extern ngx_event_actions_t   ngx_event_actions;
+```
+
+- epoll模块`ngx_epoll_module.c`, 只有支持epoll的系统使用这个文件
+
+```c
+ngx_event_module_t  ngx_epoll_module_ctx = {
+    &epoll_name,
+    ngx_epoll_create_conf,               /* create configuration */
+    ngx_epoll_init_conf,                 /* init configuration */
+
+    {
+        ngx_epoll_add_event,             /* add an event */
+        ngx_epoll_del_event,             /* delete an event */
+        ngx_epoll_add_event,             /* enable an event */
+        ngx_epoll_del_event,             /* disable an event */
+        ngx_epoll_add_connection,        /* add an connection */
+        ngx_epoll_del_connection,        /* delete an connection */
+        NULL,                            /* process the changes */
+        ngx_epoll_process_events,        /* process the events */
+        ngx_epoll_init,                  /* init the events */
+        ngx_epoll_done,                  /* done the events */
+    }
+};
+```
+
+- 编译前配置，源码文件`auto/os/linux`
+
+```
+if [ $ngx_found = yes ]; then
+    have=NGX_HAVE_CLEAR_EVENT . auto/have
+    CORE_SRCS="$CORE_SRCS $EPOLL_SRCS"
+    EVENT_MODULES="$EVENT_MODULES $EPOLL_MODULE"
+    EVENT_FOUND=YES
+fi
+```
+
 ## Nginx的事件处理
 
 Nginx里，关注的事件是依附在socket描述符上，在一个流程处理中，在不同阶段，对事件的关注也有所不同

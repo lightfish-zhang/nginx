@@ -228,6 +228,11 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
             if (ngx_trylock_accept_mutex(cycle) == NGX_ERROR) {
                 return;
             }
+            
+            /*
+            - 抢到锁的进程，会给flag打上NGX_POST_EVENTS标记，将大部分事件延迟到释放锁之后再去处理，把锁尽快释放，缩短自身持有锁的时间
+            - 没签到锁的进程，会把事件监控机制阻塞点如`epoll_wait()`的超时时间`ngx_accept_mutex_delay`限制为较短的范围，默认500ms, 配置项`accept_mutex_delay`，这样，频繁地从阻塞跳出来去争抢互斥锁
+            */
 
             if (ngx_accept_mutex_held) {
                 flags |= NGX_POST_EVENTS;
@@ -579,7 +584,10 @@ ngx_timer_signal_handler(int signo)
 
 #endif
 
-
+/*
+# 每个worker进程开始时的初始化函数
+- ngx_use_accept_mutex 全局变量
+*/
 static ngx_int_t
 ngx_event_process_init(ngx_cycle_t *cycle)
 {
