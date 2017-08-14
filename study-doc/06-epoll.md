@@ -78,6 +78,8 @@ struct epoll_event
   + 从两者区别可知，边缘触发仅支持非阻塞non-block的fd, 这样才能保证，就算服务端不读取数据，客户端可以继续往该fd写入数据
   + 对大并发的系统，从性能上，边缘触发比水平触发更有优势，但是对编程的要求也更高
 
+- 在Nginx中，监听套接口`listen socket`(如主机的80端口)，是以水平触发的，而连接套接口`connection socket`(如客户端对80端口的一个连接)，是以边缘触发的，其中原由,笔者放在下一篇
+
 #### 参考例子 
 
 - socket + epoll的代码范例,  https://github.com/lightfish-zhang/linux_practise_c/blob/master/socket/epoll-example.c

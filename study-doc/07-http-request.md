@@ -78,29 +78,51 @@ http{
 
 ```c
 /* ngx_event.c  ngx_process_events_and_timers() 部分代码 */
-if (ngx_use_accept_mutex) {
-    if (ngx_accept_disabled > 0) {
-        ngx_accept_disabled--;
-
-    } else {
-        if (ngx_trylock_accept_mutex(cycle) == NGX_ERROR) {
-            return;
-        }
-
-        if (ngx_accept_mutex_held) {
-            flags |= NGX_POST_EVENTS;
+ngx_process_events_and_timers(ngx_cycle_t *cycle){
+    /*...*/
+    if (ngx_use_accept_mutex) {
+        if (ngx_accept_disabled > 0) {
+            ngx_accept_disabled--;
 
         } else {
-            if (timer == NGX_TIMER_INFINITE
-                || timer > ngx_accept_mutex_delay)
-            {
-                timer = ngx_accept_mutex_delay;
+            if (ngx_trylock_accept_mutex(cycle) == NGX_ERROR) {
+                return;
+            }
+
+            if (ngx_accept_mutex_held) {
+                flags |= NGX_POST_EVENTS;
+
+            } else {
+                if (timer == NGX_TIMER_INFINITE
+                    || timer > ngx_accept_mutex_delay)
+                {
+                    timer = ngx_accept_mutex_delay;
+                }
             }
         }
     }
+    delta = ngx_current_msec;
+    (void) ngx_process_events(cycle, timer, flags);
+    /*...*/
+    if (ngx_posted_accept_events) {
+        ngx_event_process_posted(cycle, &ngx_posted_accept_events);
+    }
+    /*...*/
+    if (ngx_accept_mutex_held) {
+        ngx_shmtx_unlock(&ngx_accept_mutex);
+    }
+    /*...*/
+    if (ngx_posted_events) {
+        if (ngx_threaded) {
+            ngx_wakeup_worker_thread(cycle);
+
+        } else {
+            ngx_event_process_posted(cycle, &ngx_posted_events);
+        }
+    }
+    /*...*/
 }
-delta = ngx_current_msec;
-(void) ngx_process_events(cycle, timer, flags);
+
 ```
 
 ```c
@@ -109,14 +131,134 @@ ngx_accept_disabled = ngx_cycle->connection_n / 8
                         - ngx_cycle->free_connection_n;
 ```
 
-- 多进程对一个connection的可读事件的抢占
+```c
+/* ngx_epoll_module.c  传参flag带有NGX_POST_EVENTS调用的代码 */
+ngx_epoll_process_events(ngx_cycle_t *cycle, ngx_msec_t timer, ngx_uint_t flags){
+    if (flags & NGX_POST_EVENTS) {
+                    ngx_locked_post_event(wev, &ngx_posted_events);
+}
+```
+
+- 套接口
+    + 监听套接口`listen socket`(如主机的80端口)
+    + 连接套接口`connection socket`(如客户端对80端口的一个连接)
+
+- 多进程对一个监听套接口(listen)的可读事件的抢占
     + worker进程抢占`accept_mutex`锁
     + 互斥锁`ngx_trylock_accept_mutex()`等相关函数，通过Nginx的共享内存机制实现
     + 抢到锁的进程，会给`flag`打上`NGX_POST_EVENTS`标记，将大部分事件延迟到释放锁之后再去处理，把锁尽快释放，缩短自身持有锁的时间
-    + 没签到锁的进程，会把事件监控机制阻塞点如`epoll_wait()`的超时时间`timer`限制为较短的范围，默认500ms, 配置项`accept_mutex_delay`，这样，频繁地从阻塞跳出来去争抢互斥锁
-    
+    + `ngx_locked_post_event()`维护一个链表，缓存了所有事件；新建连接缓存事件`ngx_posted_accept_events`全部被处理后就必须释放持有锁，释放后执行该连接套接口connection上的`ngx_posted_events`事件
+    + 没抢到锁的进程，会把事件监控机制阻塞点如`epoll_wait()`的超时时间`timer`限制为较短的范围，默认500ms, 配置项`accept_mutex_delay`，这样，频繁地从阻塞跳出来去争抢互斥锁
+
 - 抢占`accept_mutex`后，执行的堆栈：`ngx_process_events()`->`ngx_epoll_process_events()`->`epoll_wait()`->`rev->handler(rev)`(上文提到的`ngx_event_accept()`)
 
 - `ngx_event_accept()`函数分析
     + 判断`ngx_accept_disabled`值是否大于0，判断当前进程是否过载
     + `ngx_cycle->connection_n` 表示一个工作进程的最大承受连接数，配置项是`worker_connections`
+
+- 监听套接口的可读事件时设置以水平触发的
+    + 每一个worker进程，只从监听套接口读取一个连接套接口，而epoll_wait()有可能返回多个连接套接口，采用水平触发才能保证其他连接套接口可以被其他worker进程读取
+    + 如果采用边缘触发，就会漏掉其他客户端连接
+    + 配置项`multi_accept`默认off, 也就是worker进程默认获取监听套接口上的可读事件后，只接受一个客户端请求`accept()`，这样工作进程的负载将更加均衡，如果`multi_accept`设为`off`,工作进程会在`do{}while`中`accept`此次`epoll_wait()`的所有客户端连接
+
+
+## http请求处理的过程
+
+### 请求数据的格式
+
+- `RFC 2616`文档对http请求响应消息格式描述, 请求消息格式`BNF`巴克斯诺尔格式如下(https://tools.ietf.org/html/rfc2616#page-35)
+
+```
+        Request       = Request-Line              ; Section 5.1
+                        *(( general-header        ; Section 4.5
+                         | request-header         ; Section 5.3
+                         | entity-header ) CRLF)  ; Section 7.1
+                        CRLF
+                        [ message-body ]          ; Section 4.3
+```
+
+```
+      Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
+```
+
+```
+       Method         = "OPTIONS"                ; Section 9.2
+                      | "GET"                    ; Section 9.3
+                      | "HEAD"                   ; Section 9.4
+                      | "POST"                   ; Section 9.5
+                      | "PUT"                    ; Section 9.6
+                      | "DELETE"                 ; Section 9.7
+                      | "TRACE"                  ; Section 9.8
+                      | "CONNECT"                ; Section 9.9
+                      | extension-method
+       extension-method = token
+```
+
+```
+    Request-URI    = "*" | absoluteURI | abs_path | authority
+```
+
+- `CRLF` = '\r\n'
+
+### 处理请求头
+
+- 第一步，读取`Request-Line`数据，通过`ngx_http_read_request_header()`将数据缓存到`r->header_in`，数据可能分多次到达，所以存在数据的移动操作
+- 第二步，解析`Request-Line`数据，通过`ngx_http_parse_request_line()`解析数据，根据上文的结构
+- 第三步，存储解析结果，设置相关值。`ngx_http_request_t`对象`r`的相关字段，如`uri`(/path/xxx),`method_name`(GET),`http_protocol`(HTTP/1.0)
+- 上面执行成功后，以为初步判断这是一个合法的http客户端请求，接下来就解析其他请求头，`general-header`,`request-header`,`entity-header`等
+
+```
+       general-header = Cache-Control            ; Section 14.9
+                      | Connection               ; Section 14.10
+                      | Date                     ; Section 14.18
+                      | Pragma                   ; Section 14.32
+                      | Trailer                  ; Section 14.40
+                      | Transfer-Encoding        ; Section 14.41
+                      | Upgrade                  ; Section 14.42
+                      | Via                      ; Section 14.45
+                      | Warning                  ; Section 14.46
+
+       entity-header  = Allow                    ; Section 14.7
+                      | Content-Encoding         ; Section 14.11
+                      | Content-Language         ; Section 14.12
+                      | Content-Length           ; Section 14.13
+                      | Content-Location         ; Section 14.14
+                      | Content-MD5              ; Section 14.15
+                      | Content-Range            ; Section 14.16
+                      | Content-Type             ; Section 14.17
+                      | Expires                  ; Section 14.21
+                      | Last-Modified            ; Section 14.29
+                      | extension-header
+
+       extension-header = message-header
+```
+
+### 数据响应
+
+#### GET静态资源的响应
+
+- 简单的GET请求最终会被`ngx_http_static_module`模块的`ngx_http_static_handler()`函数处理，结合location配置的根目录得到磁盘文件的路径
+- 文件属性，相关的响应头，比如`Content-Length`,`Last_Modified`，如果请求带上了时间戳，那么Nginx就可能直接返回304状态码
+- 具体代码不做分析了...
+
+#### 子请求
+
+- 子请求是Nginx所特有的设计，主要是为了提高Nginx内部对单个客户端请求处理的并发能力，进一步提高效率, 举个例子:
+
+```
+location / {
+    root html;
+    index index.html;
+    add_before_body /before.html;
+    add after_body /after.html;
+}
+```
+
+- 以上的配置会让Nginx在一次请求中并行发起对index.html, before.html, after.html的子请求
+
+### 连接关闭
+
+#### keepalive 机制
+
+- HTTP/1.1协议，标准要求连接默认被保持，所以请求头`Connection:Keep-Alive`不再有意义，而请求头`Connection:Close`则可以明确要求不再进行keepalive连接保持
+- 配置项`keepalive_timeout`默认75秒，
