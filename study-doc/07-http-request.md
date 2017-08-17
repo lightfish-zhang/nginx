@@ -258,7 +258,10 @@ location / {
 
 ### 连接关闭
 
+- 回收资源
+
 #### keepalive 机制
 
-- HTTP/1.1协议，标准要求连接默认被保持，所以请求头`Connection:Keep-Alive`不再有意义，而请求头`Connection:Close`则可以明确要求不再进行keepalive连接保持
+- HTTP/1.1协议，标准要求连接默认被保持，所以请求头`Connection: Keep-Alive;`不再有意义，而请求头`Connection: Close;`则可以明确要求不再进行keepalive连接保持
 - 配置项`keepalive_timeout`默认75秒，
+
