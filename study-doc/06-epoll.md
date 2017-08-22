@@ -60,7 +60,7 @@ struct epoll_event
 
 - `epoll_event` 结构体，字段`events`有：
   + `EPOLLIN` 普通数据可读
-  + `EPOLLOUT` 可写，缓存空间可以继续接收数据
+  + `EPOLLOUT` 可写，如果是非阻塞，表示缓存空间可以继续接收数据
   + `EPOLLPRI` 高优先级数据可读
   + `EPOLLERR` 发生错误
   + `EPOLLHUP` 发生挂起
